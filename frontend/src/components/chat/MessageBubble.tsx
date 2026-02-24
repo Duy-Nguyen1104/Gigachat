@@ -19,10 +19,7 @@ export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
       {message.isEdited && <span className="ml-1">(edited)</span>}
     </span>
   );
-
-  const isMedia = message.type === "image" || message.type === "file";
-
-  return (
+    return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1`}>
       <div className="group flex items-center gap-2 max-w-[75%]">
         {/* Timestamp left of own messages, right of others */}
