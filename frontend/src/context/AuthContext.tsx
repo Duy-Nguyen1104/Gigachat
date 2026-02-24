@@ -19,6 +19,7 @@ interface AuthContextType {
     displayName?: string,
   ) => Promise<void>;
   logout: () => void;
+  updateUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,7 +33,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem("token");
 
     if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error("Failed to parse stored user", e);
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+      }
     }
     setIsLoading(false);
   }, []);
@@ -74,8 +81,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateUser = (updatedUser: User) => {
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, login, signup, logout, updateUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

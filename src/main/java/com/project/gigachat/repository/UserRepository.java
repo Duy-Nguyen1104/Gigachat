@@ -26,7 +26,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * Search users by username only (case-insensitive), excluding a specific user.
      */
     @Query("SELECT u FROM User u WHERE u.id <> :excludeUserId " +
-            "AND LOWER(u.username) LIKE LOWER(CONCAT('%', :query, '%'))")
+            "AND LOWER(u.username) LIKE LOWER(CONCAT('%', :query, '%')) " +
+            "OR LOWER(u.displayName) LIKE LOWER(CONCAT('%', :query, '%'))")
     List<User> searchUsers(@Param("query") String query,
                            @Param("excludeUserId") UUID excludeUserId,
                            Pageable pageable);

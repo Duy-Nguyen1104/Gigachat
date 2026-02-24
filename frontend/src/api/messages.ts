@@ -60,3 +60,22 @@ export async function replyToMessage(
   const res = await api.post<Message>(`/messages/${messageId}/reply`, payload);
   return res.data;
 }
+
+export interface UploadUrlRequest {
+  fileName: string;
+  fileType: string;
+  conversationId: string;
+}
+
+export interface UploadUrlResponse {
+  uploadUrl: string;
+  fileKey: string;
+  expiresIn: number;
+}
+
+export async function getUploadUrl(
+  payload: UploadUrlRequest,
+): Promise<UploadUrlResponse> {
+  const res = await api.post<UploadUrlResponse>("/messages/upload", payload);
+  return res.data;
+}

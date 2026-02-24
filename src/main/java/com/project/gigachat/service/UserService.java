@@ -67,7 +67,7 @@ public class UserService {
                 .username(saved.getUsername())
                 .email(saved.getEmail())
                 .displayName(saved.getDisplayName())
-                .avatarUrl(saved.getAvatarUrl())
+                .avatarUrl(s3Service.generatePresignedGetUrl(saved.getAvatarUrl()))
                 .updatedAt(saved.getUpdatedAt())
                 .build();
     }
@@ -93,15 +93,15 @@ public class UserService {
         S3Service.PresignedUploadResult result = s3Service.generateAvatarUploadUrl(
                 user.getId(), request.getFileName(), request.getFileType());
         
-        // Store the permanent file URL on the user's profile
-        user.setAvatarUrl(result.fileUrl());
+        // Store the raw S3 key — bucket stays private; use presigned GET to view
+        user.setAvatarUrl(result.key());
         userRepository.save(user);
         
         log.info("Avatar upload URL generated for user: {}", user.getId());
         
         return AvatarUploadResponse.builder()
                 .uploadUrl(result.uploadUrl())
-                .fileUrl(result.fileUrl())
+                .viewUrl(s3Service.generatePresignedGetUrl(result.key()))
                 .expiresInMinutes(result.expiresInMinutes())
                 .build();
     }
@@ -152,7 +152,7 @@ public class UserService {
                         .id(u.getId())
                         .username(u.getUsername())
                         .displayName(u.getDisplayName())
-                        .avatarUrl(u.getAvatarUrl())
+                        .avatarUrl(s3Service.generatePresignedGetUrl(u.getAvatarUrl()))
                         .build())
                 .toList();
         
@@ -170,7 +170,7 @@ public class UserService {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .displayName(user.getDisplayName())
-                .avatarUrl(user.getAvatarUrl())
+                .avatarUrl(s3Service.generatePresignedGetUrl(user.getAvatarUrl()))
                 .lastSeen(user.getLastSeen())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())

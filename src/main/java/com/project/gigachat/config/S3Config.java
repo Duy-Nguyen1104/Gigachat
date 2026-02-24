@@ -11,7 +11,6 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 /**
  * AWS S3 configuration using DefaultCredentialsProvider.
  * This will automatically use credentials from:
- * - AWS Toolkit (VSCode/IntelliJ authentication)
  * - Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
  * - AWS credentials file (~/.aws/credentials)
  * - IAM role (if running on EC2)

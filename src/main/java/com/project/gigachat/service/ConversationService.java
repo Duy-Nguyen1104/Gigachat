@@ -1,9 +1,11 @@
 package com.project.gigachat.service;
 
+import com.project.gigachat.service.S3Service;
 import com.project.gigachat.dto.conversation.*;
 import com.project.gigachat.entity.Conversation;
 import com.project.gigachat.entity.Conversation.ConversationType;
 import com.project.gigachat.entity.ConversationParticipant;
+import com.project.gigachat.entity.Message;
 import com.project.gigachat.entity.User;
 import com.project.gigachat.exception.BadRequestException;
 import com.project.gigachat.exception.ConflictException;
@@ -11,6 +13,7 @@ import com.project.gigachat.exception.ResourceNotFoundException;
 import com.project.gigachat.exception.UnauthorizedException;
 import com.project.gigachat.repository.ConversationParticipantRepository;
 import com.project.gigachat.repository.ConversationRepository;
+import com.project.gigachat.repository.MessageRepository;
 import com.project.gigachat.repository.UserRepository;
 import com.project.gigachat.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +36,9 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ConversationParticipantRepository participantRepository;
     private final UserRepository userRepository;
+    private final MessageRepository messageRepository;
     private final SecurityUtils securityUtils;
+    private final S3Service s3Service;
 
     // -------------------------------------------------------------------------
     // GET /api/conversations
@@ -83,10 +88,10 @@ public class ConversationService {
     }
 
     private ConversationResponse createDirectConversation(User creator, CreateConversationRequest request) {
-        if (request.getParticipantId() == null) {
+        UUID otherId = request.getParticipantId();
+        if (otherId == null) {
             throw new BadRequestException("participantId is required for direct conversations");
         }
-        UUID otherId = request.getParticipantId();
         if (otherId.equals(creator.getId())) {
             throw new BadRequestException("Cannot start a conversation with yourself");
         }
@@ -377,20 +382,66 @@ public class ConversationService {
     private ConversationResponse toResponse(Conversation conv, User currentUser) {
         List<ConversationParticipant> participants = participantRepository.findByConversation(conv);
 
-        boolean muted = participants.stream()
+        ConversationParticipant currentParticipant = participants.stream()
                 .filter(p -> p.getUser().getId().equals(currentUser.getId()))
                 .findFirst()
-                .map(p -> Boolean.TRUE.equals(p.getIsMuted()))
-                .orElse(false);
+                .orElse(null);
+
+        boolean muted = currentParticipant != null && Boolean.TRUE.equals(currentParticipant.getIsMuted());
+
+        // Populate last message
+        ConversationResponse.LastMessageInfo lastMessageInfo = messageRepository
+                .findFirstByConversationOrderByCreatedAtDesc(conv)
+                .filter(m -> !Boolean.TRUE.equals(m.getIsDeleted()))
+                .map(m -> ConversationResponse.LastMessageInfo.builder()
+                        .id(m.getId())
+                        .content(m.getContent())
+                        .senderId(m.getSender().getId())
+                        .senderName(m.getSender().getDisplayName() != null
+                                ? m.getSender().getDisplayName()
+                                : m.getSender().getUsername())
+                        .createdAt(m.getCreatedAt())
+                        .type(m.getType().name())
+                        .build())
+                .orElse(null);
+
+        // Count unread messages for the current user
+        int unreadCount = currentParticipant != null
+                ? messageRepository.countUnreadMessages(
+                        conv.getId(),
+                        currentUser.getId(),
+                        currentParticipant.getLastReadAt())
+                : 0;
+
+        // For direct conversations derive display name from the other participant
+        String displayName = conv.getName();
+        String avatarUrl = conv.getAvatarUrl();
+        if (conv.getType() == ConversationType.direct && displayName == null) {
+            displayName = participants.stream()
+                    .filter(p -> !p.getUser().getId().equals(currentUser.getId()))
+                    .findFirst()
+                    .map(p -> p.getUser().getDisplayName() != null
+                            ? p.getUser().getDisplayName()
+                            : p.getUser().getUsername())
+                    .orElse(null);
+            if (avatarUrl == null) {
+                avatarUrl = participants.stream()
+                        .filter(p -> !p.getUser().getId().equals(currentUser.getId()))
+                        .findFirst()
+                        .map(p -> p.getUser().getAvatarUrl())
+                        .orElse(null);
+            }
+        }
 
         return ConversationResponse.builder()
                 .id(conv.getId())
                 .type(conv.getType().name())
-                .name(conv.getName())
-                .avatarUrl(conv.getAvatarUrl())
+                .name(displayName)
+                .avatarUrl(s3Service.generatePresignedGetUrl(avatarUrl))
                 .createdBy(conv.getCreatedBy().getId())
                 .participants(participants.stream().map(this::toParticipantResponse).toList())
-                .unreadCount(0) // populated by MessageService once messages exist
+                .lastMessage(lastMessageInfo)
+                .unreadCount(unreadCount)
                 .isMuted(muted)
                 .createdAt(conv.getCreatedAt())
                 .updatedAt(conv.getUpdatedAt())
@@ -402,7 +453,7 @@ public class ConversationService {
                 .userId(p.getUser().getId())
                 .username(p.getUser().getUsername())
                 .displayName(p.getUser().getDisplayName())
-                .avatarUrl(p.getUser().getAvatarUrl())
+                .avatarUrl(s3Service.generatePresignedGetUrl(p.getUser().getAvatarUrl()))
                 .isAdmin(Boolean.TRUE.equals(p.getIsAdmin()))
                 .joinedAt(p.getJoinedAt())
                 .lastReadAt(p.getLastReadAt())

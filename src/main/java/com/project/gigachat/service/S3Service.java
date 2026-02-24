@@ -7,9 +7,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 import java.time.Duration;
@@ -92,16 +94,45 @@ public class S3Service {
      * Extract the S3 object key from a full S3 URL.
      * Example: https://bucket.s3.region.amazonaws.com/avatars/uuid/file.png → avatars/uuid/file.png
      */
-    public String extractKeyFromUrl(String fileUrl) {
-        if (fileUrl == null || fileUrl.isBlank()) {
+    public String extractKeyFromUrl(String keyOrUrl) {
+        if (keyOrUrl == null || keyOrUrl.isBlank()) {
             return null;
         }
-        // URL format: https://{bucket}.s3.{region}.amazonaws.com/{key}
-        String prefix = String.format("https://%s.s3.%s.amazonaws.com/", bucketName, region);
-        if (fileUrl.startsWith(prefix)) {
-            return fileUrl.substring(prefix.length());
+        // Handle legacy full URL: https://{bucket}.s3.{region}.amazonaws.com/{key}
+        if (keyOrUrl.startsWith("https://")) {
+            String prefix = String.format("https://%s.s3.%s.amazonaws.com/", bucketName, region);
+            return keyOrUrl.startsWith(prefix) ? keyOrUrl.substring(prefix.length()) : null;
         }
-        return null;
+        // Already a raw S3 key
+        return keyOrUrl;
+    }
+
+    /**
+     * Generate a pre-signed GET URL for viewing a private S3 object.
+     * Accepts either a raw S3 key (new format) or a legacy full URL.
+     * Returns null if the input is null/blank or unresolvable.
+     */
+    public String generatePresignedGetUrl(String keyOrUrl) {
+        if (keyOrUrl == null || keyOrUrl.isBlank()) {
+            return null;
+        }
+        String key = extractKeyFromUrl(keyOrUrl);
+        if (key == null) {
+            return null;
+        }
+        try {
+            GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                    .signatureDuration(Duration.ofMinutes(presignedUrlExpirationMinutes))
+                    .getObjectRequest(GetObjectRequest.builder()
+                            .bucket(bucketName)
+                            .key(key)
+                            .build())
+                    .build();
+            return s3Presigner.presignGetObject(presignRequest).url().toString();
+        } catch (S3Exception e) {
+            log.error("Failed to generate pre-signed GET URL for key: {}", key, e);
+            throw new FileUploadException("Failed to generate view URL", e);
+        }
     }
     
     // ---- Private helpers ----
@@ -120,11 +151,10 @@ public class S3Service {
                     .build();
             
             String uploadUrl = s3Presigner.presignPutObject(presignRequest).url().toString();
-            String fileUrl = buildPublicUrl(key);
-            
+
             log.debug("Generated pre-signed upload URL for key: {}", key);
-            
-            return new PresignedUploadResult(uploadUrl, fileUrl, presignedUrlExpirationMinutes);
+
+            return new PresignedUploadResult(uploadUrl, key, presignedUrlExpirationMinutes);
         } catch (S3Exception e) {
             log.error("Failed to generate pre-signed URL for key: {}", key, e);
             throw new FileUploadException("Failed to generate upload URL", e);
@@ -167,6 +197,6 @@ public class S3Service {
     /**
      * Result record for pre-signed URL generation.
      */
-    public record PresignedUploadResult(String uploadUrl, String fileUrl, int expiresInMinutes) {
+    public record PresignedUploadResult(String uploadUrl, String key, int expiresInMinutes) {
     }
 }

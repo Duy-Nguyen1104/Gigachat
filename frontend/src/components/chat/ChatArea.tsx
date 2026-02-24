@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send,
   Paperclip,
@@ -6,16 +6,27 @@ import {
   Phone,
   Video,
   MoreVertical,
+  Loader2,
 } from "lucide-react";
 import type { Message, Conversation } from "../../types";
 import { useAuth } from "../../context/AuthContext";
 import MessageBubble from "./MessageBubble";
+import { getUploadUrl } from "../../api/messages";
+import axios from "axios";
 
 interface ChatAreaProps {
   conversation: Conversation | null;
   messages: Message[];
-  onSendMessage?: (content: string) => void;
+  onSendMessage?: (payload: {
+    type: "text" | "image" | "file" | "voice";
+    content?: string;
+    attachmentUrl?: string;
+  }) => void;
   loading?: boolean;
+  /** Display names of users currently typing. */
+  typingUsers?: string[];
+  onTypingStart?: () => void;
+  onTypingStop?: () => void;
 }
 
 export default function ChatArea({
@@ -23,9 +34,16 @@ export default function ChatArea({
   messages,
   onSendMessage,
   loading = false,
+  typingUsers = [],
+  onTypingStart,
+  onTypingStop,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const stopTypingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTyping = useRef(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -35,9 +53,93 @@ export default function ChatArea({
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed) return;
-    onSendMessage?.(trimmed);
+    // Stop typing before sending
+    if (isTyping.current) {
+      onTypingStop?.();
+      isTyping.current = false;
+    }
+    if (stopTypingTimer.current) {
+      clearTimeout(stopTypingTimer.current);
+      stopTypingTimer.current = null;
+    }
+    onSendMessage?.({ type: "text", content: trimmed });
     setInput("");
   };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !conversation) return;
+
+    try {
+      setIsUploading(true);
+
+      // 1. Get presigned URL
+      const { uploadUrl, fileKey } = await getUploadUrl({
+        fileName: file.name,
+        fileType: file.type,
+        conversationId: conversation.id,
+      });
+
+      // 2. Upload to S3
+      await axios.put(uploadUrl, file, {
+        headers: {
+          "Content-Type": file.type,
+        },
+      });
+
+      // 3. Send message; server resolves key to presigned GET URL when fetching messages
+      const type = file.type.startsWith("image/") ? "image" : "file";
+      onSendMessage?.({
+        type,
+        attachmentUrl: fileKey,
+        content: file.name,
+      });
+    } catch (err) {
+      console.error("Upload failed", err);
+      alert("Failed to upload file. Please try again.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setInput(e.target.value);
+      if (!isTyping.current && e.target.value.trim()) {
+        onTypingStart?.();
+        isTyping.current = true;
+      }
+      // Reset the stop-typing debounce
+      if (stopTypingTimer.current) clearTimeout(stopTypingTimer.current);
+      if (e.target.value.trim()) {
+        stopTypingTimer.current = setTimeout(() => {
+          onTypingStop?.();
+          isTyping.current = false;
+          stopTypingTimer.current = null;
+        }, 4000);
+      } else {
+        // Field cleared — stop immediately
+        if (isTyping.current) {
+          onTypingStop?.();
+          isTyping.current = false;
+        }
+      }
+    },
+    [onTypingStart, onTypingStop],
+  );
+
+  const typingLabel = (() => {
+    if (typingUsers.length === 0) return null;
+    if (typingUsers.length === 1) return `${typingUsers[0]} is typing…`;
+    if (typingUsers.length === 2)
+      return `${typingUsers[0]} and ${typingUsers[1]} are typing…`;
+    return `${typingUsers[0]}, ${typingUsers[1]}, and ${typingUsers.length - 2} others are typing…`;
+  })();
 
   if (!conversation) {
     return (
@@ -112,6 +214,13 @@ export default function ChatArea({
                 isOwn={msg.senderId === user?.id}
               />
             ))}
+            {typingLabel && (
+              <div className="flex justify-start mb-2">
+                <span className="text-xs text-gray-400 italic px-2">
+                  {typingLabel}
+                </span>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </>
         )}
@@ -120,13 +229,27 @@ export default function ChatArea({
       {/* Input */}
       <div className="px-6 py-4 border-t border-gray-100 bg-white">
         <div className="flex items-end gap-3">
-          <button className="w-10 h-10 rounded-xl hover:bg-gray-100 flex items-center justify-center text-gray-500 transition flex-shrink-0">
-            <Paperclip className="w-5 h-5" />
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={handleFileClick}
+            disabled={isUploading || !conversation}
+            className="w-10 h-10 rounded-xl hover:bg-gray-100 flex items-center justify-center text-gray-500 transition flex-shrink-0 disabled:opacity-50"
+          >
+            {isUploading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Paperclip className="w-5 h-5" />
+            )}
           </button>
           <div className="flex-1 bg-gray-50 rounded-2xl border border-gray-200 px-4 py-3 focus-within:ring-2 focus-within:ring-brand-300 transition">
             <textarea
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

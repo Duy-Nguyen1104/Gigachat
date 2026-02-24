@@ -24,4 +24,7 @@ public interface ConversationParticipantRepository extends JpaRepository<Convers
     long countByConversation(Conversation conversation);
 
     List<ConversationParticipant> findByConversationAndIsAdmin(Conversation conversation, Boolean isAdmin);
+
+    /** All conversations a given user participates in — used for presence broadcasting. */
+    List<ConversationParticipant> findByUser(User user);
 }

@@ -116,7 +116,7 @@ export default function Sidebar({
                     </span>
                   )}
                 </div>
-                {(conv.unreadCount ?? 0) > 0 ? (
+                {conv.unreadCount !== undefined && conv.unreadCount > 0 ? (
                   <p className="text-xs font-bold truncate">
                     {conv.lastMessage?.content}
                   </p>
@@ -128,7 +128,7 @@ export default function Sidebar({
               </div>
 
               {/* Unread badge */}
-              {(conv.unreadCount ?? 0) > 0 && (
+              {conv.unreadCount !== undefined && conv.unreadCount > 0 && (
                 <div className="w-5 h-5 rounded-full bg-brand-400 flex items-center justify-center flex-shrink-0 mt-1">
                   <span className="text-[10px] font-bold text-gray-900">
                     {conv.unreadCount > 9 ? "9+" : conv.unreadCount}

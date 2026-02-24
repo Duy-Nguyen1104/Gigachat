@@ -15,6 +15,6 @@ import lombok.NoArgsConstructor;
 public class AvatarUploadResponse {
     
     private String uploadUrl;
-    private String fileUrl;
+    private String viewUrl;
     private int expiresInMinutes;
 }
