@@ -1,11 +1,9 @@
 package com.project.gigachat.service;
 
-import com.project.gigachat.service.S3Service;
 import com.project.gigachat.dto.conversation.*;
 import com.project.gigachat.entity.Conversation;
 import com.project.gigachat.entity.Conversation.ConversationType;
 import com.project.gigachat.entity.ConversationParticipant;
-import com.project.gigachat.entity.Message;
 import com.project.gigachat.entity.User;
 import com.project.gigachat.exception.BadRequestException;
 import com.project.gigachat.exception.ConflictException;
