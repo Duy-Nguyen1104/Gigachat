@@ -24,24 +24,50 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function readStoredUser(): User | null {
+  const storedUser = localStorage.getItem("user");
+  if (!storedUser) return null;
+
+  try {
+    return JSON.parse(storedUser) as User;
+  } catch (e) {
+    console.error("Failed to parse stored user", e);
+    localStorage.removeItem("user");
+    return null;
+  }
+}
+
+async function refreshCurrentUser(): Promise<User> {
+  const response = await api.get<User>("/user/me");
+  localStorage.setItem("user", JSON.stringify(response.data));
+  return response.data;
+}
+
+function clearStoredAuth() {
+  localStorage.removeItem("user");
+  localStorage.removeItem("token");
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
     const token = localStorage.getItem("token");
-
-    if (storedUser && token) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error("Failed to parse stored user", e);
-        localStorage.removeItem("user");
-        localStorage.removeItem("token");
-      }
+    if (!token) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    setUser(readStoredUser());
+    refreshCurrentUser()
+      .then(setUser)
+      .catch((e) => {
+        console.error("Failed to refresh current user", e);
+        clearStoredAuth();
+        setUser(null);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -76,8 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearStoredAuth();
     setUser(null);
   };
 

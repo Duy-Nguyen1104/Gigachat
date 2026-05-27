@@ -12,7 +12,7 @@
 	<artifactId>gigachat</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>gigachat</name>
-	<description>Demo project for Spring Boot</description>
+	<description>Gigachat application</description>
 	<url/>
 	<licenses>
 		<license/>

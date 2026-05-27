@@ -78,13 +78,16 @@ public class WebSocketController {
 
     private User resolveUser(Principal principal) {
         if (principal == null) return null;
-        String email = null;
-        if (principal instanceof Authentication auth
-                && auth.getPrincipal() instanceof UserDetails ud) {
-            email = ud.getUsername();
-        } else {
-            email = principal.getName();
+
+        String principalName = principal instanceof Authentication auth
+                && auth.getPrincipal() instanceof UserDetails userDetails
+                ? userDetails.getUsername()
+                : principal.getName();
+
+        try {
+            return userRepository.findById(UUID.fromString(principalName)).orElse(null);
+        } catch (IllegalArgumentException ignored) {
+            return userRepository.findByEmail(principalName).orElse(null);
         }
-        return userRepository.findByEmail(email).orElse(null);
     }
 }

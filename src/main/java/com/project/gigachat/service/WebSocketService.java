@@ -31,49 +31,51 @@ public class WebSocketService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ConversationParticipantRepository participantRepository;
 
-    // ── Broadcast to all subscribers of a conversation topic ────────────────
-
+    // Broadcast to active subscribers of a conversation topic, e.g. typing indicators.
     public void broadcastToConversation(UUID conversationId, String type, Object data) {
         WsEvent event = WsEvent.builder().type(type).data(data).build();
         messagingTemplate.convertAndSend("/topic/conversation/" + conversationId, event);
-        log.debug("WS → /topic/conversation/{} [{}]", conversationId, type);
+        log.debug("WS -> /topic/conversation/{} [{}]", conversationId, type);
     }
 
-    // ── Send to a specific user's private queue ──────────────────────────────
-
+    // Send to a specific user's private queue.
     public void sendToUser(UUID userId, String type, Object data) {
         WsEvent event = WsEvent.builder().type(type).data(data).build();
-        // SimpMessagingTemplate.convertAndSendToUser automatically prefixes with /user
         messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/notifications", event);
-        log.debug("WS → /user/{}/queue/notifications [{}]", userId, type);
+        log.debug("WS -> /user/{}/queue/notifications [{}]", userId, type);
     }
 
-    // ── Broadcast online/offline status to conversation partners ────────────
-
-    /**
-     * When a user connects or disconnects, notify all other participants in
-     * every conversation the user belongs to.
-     */
+    // Send personal notifications to every participant in a conversation.
+    // This reaches logged-in users even before they open the conversation.
     @Transactional(readOnly = true)
-    public void broadcastUserStatusToPartners(User user, boolean online) {
-        List<ConversationParticipant> participations = participantRepository.findByUser(user);
+    public void sendToConversationParticipants(UUID conversationId, String type, Object data) {
+        List<ConversationParticipant> participants = participantRepository.findByConversationId(conversationId);
 
-        Map<String, Object> data = Map.of(
+        participants.forEach(participant -> sendToUser(participant.getUser().getId(), type, data));
+        log.debug("WS -> {} participants in conversation {} [{}]", participants.size(), conversationId, type);
+    }
+
+    // Broadcast online/offline status to conversation partners.
+    public void broadcastUserStatusToPartners(User user, boolean online) {
+        List<ConversationParticipant> participants = participantRepository.findByUser(user);
+        String eventType = online ? "USER_ONLINE" : "USER_OFFLINE";
+
+        participants.stream()
+                .map(cp -> cp.getConversation().getId())
+                .distinct()
+                .forEach(convId -> broadcastToConversation(convId, eventType, userStatusPayload(user, online)));
+
+        log.info("Broadcast {} for user {} across {} conversation(s)",
+                eventType, user.getId(), participants.size());
+    }
+
+    private Map<String, Object> userStatusPayload(User user, boolean online) {
+        return Map.of(
                 "userId", user.getId().toString(),
                 "displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername(),
                 "avatarUrl", user.getAvatarUrl() != null ? user.getAvatarUrl() : "",
                 "isOnline", online,
                 "lastSeen", user.getLastSeen() != null ? user.getLastSeen().toString() : ""
         );
-
-        String eventType = online ? "USER_ONLINE" : "USER_OFFLINE";
-
-        participations.stream()
-                .map(cp -> cp.getConversation().getId())
-                .distinct()
-                .forEach(convId -> broadcastToConversation(convId, eventType, data));
-
-        log.info("Broadcast {} for user {} across {} conversation(s)",
-                eventType, user.getId(), participations.size());
     }
 }

@@ -15,6 +15,10 @@ interface WsEvent {
   data: unknown;
 }
 
+const NOTIFICATIONS_DESTINATION = "/user/queue/notifications";
+const conversationTopic = (conversationId: string) =>
+  `/topic/conversation/${conversationId}`;
+
 interface UseWebSocketOptions {
   /** Currently active conversation to subscribe to. */
   conversationId: string | null;
@@ -31,6 +35,7 @@ interface UseWebSocketOptions {
 export function useWebSocket({ conversationId, onEvent }: UseWebSocketOptions) {
   const clientRef = useRef<Client | null>(null);
   const subRef = useRef<StompSubscription | null>(null);
+  const notificationSubRef = useRef<StompSubscription | null>(null);
 
   // Always keep the callbacks current (avoids stale closure in subscribe handler)
   const onEventRef = useRef(onEvent);
@@ -42,18 +47,29 @@ export function useWebSocket({ conversationId, onEvent }: UseWebSocketOptions) {
     convIdRef.current = conversationId;
   });
 
+  const handleFrame = useCallback((body: string) => {
+    try {
+      const event = JSON.parse(body) as WsEvent;
+      onEventRef.current(event.type, event.data);
+    } catch (e) {
+      console.error("WS frame parse error", e);
+    }
+  }, []);
+
   // ── Subscribe helper — safe to call any time the client is connected ────
   const subscribe = useCallback((client: Client, id: string) => {
     subRef.current?.unsubscribe();
-    subRef.current = client.subscribe(`/topic/conversation/${id}`, (frame) => {
-      try {
-        const event = JSON.parse(frame.body) as WsEvent;
-        onEventRef.current(event.type, event.data);
-      } catch (e) {
-        console.error("WS frame parse error", e);
-      }
+    subRef.current = client.subscribe(conversationTopic(id), (frame) => {
+      handleFrame(frame.body);
     });
-  }, []);
+  }, [handleFrame]);
+
+  const subscribeToNotifications = useCallback((client: Client) => {
+    notificationSubRef.current?.unsubscribe();
+    notificationSubRef.current = client.subscribe(NOTIFICATIONS_DESTINATION, (frame) => {
+      handleFrame(frame.body);
+    });
+  }, [handleFrame]);
 
   // ── Create STOMP client once on mount ────────────────────────────────────
   useEffect(() => {
@@ -70,6 +86,9 @@ export function useWebSocket({ conversationId, onEvent }: UseWebSocketOptions) {
       connectHeaders: { Authorization: `Bearer ${token}` },
       reconnectDelay: 5000,
       onConnect: () => {
+        // Always listen for personal notifications so messages arrive even
+        // before the user opens a conversation after login/reload.
+        subscribeToNotifications(client);
         // Re-subscribe to whatever conversation is active (handles reconnects too)
         if (convIdRef.current) subscribe(client, convIdRef.current);
       },
@@ -77,15 +96,16 @@ export function useWebSocket({ conversationId, onEvent }: UseWebSocketOptions) {
         console.error("STOMP error", frame.headers["message"]),
     });
 
-    client.activate();
+    client.activate(); // send the CONNECT frame
     clientRef.current = client;
 
     return () => {
       subRef.current?.unsubscribe();
+      notificationSubRef.current?.unsubscribe();
       client.deactivate();
       clientRef.current = null;
     };
-  }, [subscribe]);
+  }, [subscribe, subscribeToNotifications]);
 
   // ── Re-subscribe when active conversation changes ────────────────────────
   useEffect(() => {

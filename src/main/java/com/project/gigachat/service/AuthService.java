@@ -29,6 +29,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
     private final AuthenticationManager authenticationManager;
+    private final S3Service s3Service;
     
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -199,7 +200,7 @@ public class AuthService {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .displayName(user.getDisplayName())
-                .avatarUrl(user.getAvatarUrl())
+                .avatarUrl(s3Service.generatePresignedGetUrl(user.getAvatarUrl()))
                 .lastSeen(user.getLastSeen())
                 .createdAt(user.getCreatedAt())
                 .build();

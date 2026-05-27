@@ -131,7 +131,7 @@ public class MessageService {
 
         log.info("Message sent in conversation {} by {}", conversationId, sender.getId());
         MessageResponse response = toMessageResponse(saved);
-        webSocketService.broadcastToConversation(conversationId, "MESSAGE_NEW", response);
+        webSocketService.sendToConversationParticipants(conversationId, "MESSAGE_NEW", response);
         return response;
     }
 
@@ -159,7 +159,7 @@ public class MessageService {
         Message saved = messageRepository.save(message);
         log.info("Message {} edited by {}", messageId, currentUser.getId());
         MessageResponse response = toMessageResponse(saved);
-        webSocketService.broadcastToConversation(saved.getConversation().getId(), "MESSAGE_UPDATED", response);
+        webSocketService.sendToConversationParticipants(saved.getConversation().getId(), "MESSAGE_UPDATED", response);
         return response;
     }
 
@@ -177,7 +177,7 @@ public class MessageService {
         Message saved = messageRepository.save(message);
         log.info("Message {} soft-deleted by {}", messageId, currentUser.getId());
         MessageResponse response = toMessageResponse(saved);
-        webSocketService.broadcastToConversation(saved.getConversation().getId(), "MESSAGE_DELETED", response);
+        webSocketService.sendToConversationParticipants(saved.getConversation().getId(), "MESSAGE_DELETED", response);
         return response;
     }
 
@@ -214,7 +214,7 @@ public class MessageService {
         createOrUpdateStatus(saved, sender, StatusType.read);
         conversationRepository.save(conv);
         MessageResponse response = toMessageResponse(saved);
-        webSocketService.broadcastToConversation(conv.getId(), "MESSAGE_NEW", response);
+        webSocketService.sendToConversationParticipants(conv.getId(), "MESSAGE_NEW", response);
         return response;
     }
 

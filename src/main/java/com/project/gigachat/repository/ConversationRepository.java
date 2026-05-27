@@ -15,6 +15,8 @@ import java.util.UUID;
 @Repository
 public interface ConversationRepository extends JpaRepository<Conversation, UUID> {
 
+        Optional<Conversation> findByTypeAndName(Conversation.ConversationType type, String name);
+
     /**
      * Find all conversations where the given user is a participant,
      * ordered by the most recently updated conversation first.

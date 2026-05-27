@@ -13,7 +13,6 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 @EnableWebSocketMessageBroker
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
-
     private final WebSocketAuthInterceptor authInterceptor;
 
     @Override
@@ -25,11 +24,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        // Enable in-memory broker for /topic (broadcast) and /queue (user-specific)
         registry.enableSimpleBroker("/topic", "/queue");
-        // Messages from client prefixed with /app are routed to @MessageMapping methods
         registry.setApplicationDestinationPrefixes("/app");
-        // Prefix for user-specific destinations (/user/{userId}/queue/...)
         registry.setUserDestinationPrefix("/user");
     }
 

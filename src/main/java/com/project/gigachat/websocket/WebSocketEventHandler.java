@@ -1,6 +1,5 @@
 package com.project.gigachat.websocket;
 
-import com.project.gigachat.entity.User;
 import com.project.gigachat.repository.UserRepository;
 import com.project.gigachat.service.WebSocketService;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 @Slf4j
 public class WebSocketEventHandler {
-
+    // handle connect / disconnect events of users
     /** sessionId → userId (UUID) for active connections. */
     private final ConcurrentHashMap<String, UUID> sessionUserMap = new ConcurrentHashMap<>();
 
@@ -34,7 +33,7 @@ public class WebSocketEventHandler {
     private final WebSocketService webSocketService;
 
     // ── User connects ────────────────────────────────────────────────────────
-
+    // register an event listener, spring wil call this method whenever a new STOMP session is established
     @EventListener
     @Transactional
     public void handleConnect(SessionConnectedEvent event) {
