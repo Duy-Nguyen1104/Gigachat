@@ -14,6 +14,20 @@ import MessageBubble from "./MessageBubble";
 import { getUploadUrl } from "../../api/messages";
 import axios from "axios";
 
+const MESSAGE_SEPARATOR_MINUTES = 30;
+const MESSAGE_SEPARATOR_MS = MESSAGE_SEPARATOR_MINUTES * 60 * 1000;
+const SAME_DAY_SEPARATOR_FORMAT = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const DIFFERENT_DAY_SEPARATOR_FORMAT = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 interface ChatAreaProps {
   conversation: Conversation | null;
   messages: Message[];
@@ -27,6 +41,37 @@ interface ChatAreaProps {
   typingUsers?: string[];
   onTypingStart?: () => void;
   onTypingStop?: () => void;
+}
+
+function shouldShowMessageSeparator(
+  previous: Message | undefined,
+  current: Message,
+) {
+  if (!previous) return false;
+
+  const previousTime = new Date(previous.createdAt).getTime();
+  const currentTime = new Date(current.createdAt).getTime();
+
+  return currentTime - previousTime > MESSAGE_SEPARATOR_MS;
+}
+
+function isSameDay(first: Date, second: Date) {
+  return (
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
+  );
+}
+
+function formatMessageSeparator(previous: Message, current: Message) {
+  const previousDate = new Date(previous.createdAt);
+  const currentDate = new Date(current.createdAt);
+
+  if (isSameDay(previousDate, currentDate)) {
+    return SAME_DAY_SEPARATOR_FORMAT.format(currentDate);
+  }
+
+  return DIFFERENT_DAY_SEPARATOR_FORMAT.format(currentDate);
 }
 
 export default function ChatArea({
@@ -207,13 +252,26 @@ export default function ChatArea({
           </div>
         ) : (
           <>
-            {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                isOwn={msg.senderId === user?.id}
-              />
-            ))}
+            {messages.map((msg, index) => {
+              const previous = messages[index - 1];
+              const showSeparator = shouldShowMessageSeparator(previous, msg);
+
+              return (
+                <div key={msg.id}>
+                  {showSeparator && previous && (
+                    <div className="flex justify-center my-4">
+                      <span className="px-3 py-1 rounded-full text-xs font-medium text-gray-500">
+                        {formatMessageSeparator(previous, msg)}
+                      </span>
+                    </div>
+                  )}
+                  <MessageBubble
+                    message={msg}
+                    isOwn={msg.senderId === user?.id}
+                  />
+                </div>
+              );
+            })}
             {typingLabel && (
               <div className="flex justify-start mb-2">
                 <span className="text-xs text-gray-400 italic px-2">

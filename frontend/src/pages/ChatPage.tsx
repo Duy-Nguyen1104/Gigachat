@@ -37,11 +37,14 @@ export default function ChatPage() {
     (type: string, data: unknown) => {
       if (type === "MESSAGE_NEW") {
         const msg = data as Message;
-        setMessages((prev) => {
-          // Deduplicate: the sender already added it optimistically via HTTP
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+        const isActiveConversation = msg.conversationId === activeConversationId;
+        if (isActiveConversation) {
+          setMessages((prev) => {
+            // Deduplicate: the sender already added it optimistically via HTTP
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+        }
         setConversations((prev) =>
           prev.map((c) =>
             c.id === msg.conversationId
@@ -58,8 +61,7 @@ export default function ChatPage() {
                   updatedAt: msg.createdAt,
                   // Increment unread only for inactive conversations from other users
                   unreadCount:
-                    msg.conversationId === activeConversationId ||
-                    msg.senderId === me?.id
+                    isActiveConversation || msg.senderId === me?.id
                       ? (c.unreadCount ?? 0)
                       : (c.unreadCount ?? 0) + 1,
                 }
@@ -70,6 +72,7 @@ export default function ChatPage() {
 
       if (type === "MESSAGE_UPDATED") {
         const updated = data as Message;
+        if (updated.conversationId !== activeConversationId) return;
         setMessages((prev) =>
           prev.map((m) => (m.id === updated.id ? updated : m)),
         );
@@ -77,6 +80,7 @@ export default function ChatPage() {
 
       if (type === "MESSAGE_DELETED") {
         const deleted = data as Message;
+        if (deleted.conversationId !== activeConversationId) return;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === deleted.id ? { ...m, isDeleted: true, content: "" } : m,

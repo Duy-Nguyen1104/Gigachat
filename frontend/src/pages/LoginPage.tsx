@@ -251,7 +251,7 @@ export default function LoginPage() {
         </div>
 
         <div className="w-full max-w-md">
-          <h3 className="text-xl font-semibold text-gray-900 mb-6">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6 text-center">
             Log in to GigaChat
           </h3>
 
